@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from __future__ import print_function
+from __future__ import division, print_function
 
 import os
 import midi
@@ -8,6 +8,10 @@ import midi
 
 # We are using a high precision ticks-per-quarter (= PPQ) resolution
 PPQ_RESOLUTION = 960
+
+
+def get_note_length(numerator=1, denominator=4):
+    return int(numerator / denominator * 4 * PPQ_RESOLUTION)
 
 
 def render_midi(midifile, basename, delete_wave=True):
@@ -34,13 +38,6 @@ def render_midi(midifile, basename, delete_wave=True):
 
     if delete_wave:
         os.system("rm {}".format(filename_wav))
-
-
-def add_note(track, tick_from, tick_upto, pitch, velocity=100):
-    evt_on = midi.NoteOnEvent(tick=tick_from, pitch=pitch, velocity=velocity)
-    track.append(evt_on)
-    evt_off = midi.NoteOffEvent(tick=tick_upto, pitch=pitch)
-    track.append(evt_off)
 
 
 class Note(object):
@@ -117,23 +114,50 @@ def generate(track_data, bpm, basename):
     render_midi(midifile, basename)
 
 
-def generator1():
+def get_start_pitches(pattern, low=midi.A_3, high=midi.C_6):
+    max_delta = max(pattern)
+    return list(range(low, high - max_delta + 1))
 
+
+def generator_major_triad(low=midi.A_3, high=midi.C_6):
     data = MidiData()
 
-    note_length = PPQ_RESOLUTION
+    note_length = get_note_length()
     pattern = [0, 4, 7, 12, 7, 4, 0]
+
+    start_pitches = get_start_pitches(pattern, low, high)
+
     pos = 0
-    for delta in pattern:
-        data.add_note("fg", Note(pos, pos + note_length, midi.G_3 + delta))
+    for start_pitch in start_pitches:
+        data.add_note("bg", Note(pos, pos + note_length * 8, start_pitch - 12))
+        for delta in pattern:
+            data.add_note("fg", Note(pos, pos + note_length, start_pitch + delta))
+            pos += note_length
         pos += note_length
 
-    data.add_note("fg", Note(0, 0 + note_length * 8, midi.G_2))
-    data.add_note("bg", Note(0, 0 + note_length * 8, midi.G_3))
+    return data
+
+
+def generator_major_scale(low=midi.A_3, high=midi.C_6):
+    data = MidiData()
+
+    note_length = get_note_length(1, 8)
+    pattern = [0, 2, 4, 5, 7, 9, 11, 12, 11, 9, 7, 5, 4, 2, 0]
+
+    start_pitches = get_start_pitches(pattern, low, high)
+
+    pos = 0
+    for start_pitch in start_pitches:
+        data.add_note("bg", Note(pos, pos + note_length * 16, start_pitch - 12))
+        for delta in pattern:
+            data.add_note("fg", Note(pos, pos + note_length, start_pitch + delta))
+            pos += note_length
+        pos += note_length
+
     return data
 
 
 if __name__ == "__main__":
-    mididata = generator1()
-    generate(mididata.extract_track_data(), 120, "test")
+    generate(generator_major_triad().extract_track_data(), 120, "major_triad")
+    generate(generator_major_scale().extract_track_data(), 90, "major_scale")
 
