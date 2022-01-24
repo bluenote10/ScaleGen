@@ -1,20 +1,20 @@
 #!/usr/bin/env python
 
-from __future__ import division, print_function
-
 import os
-import midi
+from typing import Any, List
 
+import midi
+from typing_extensions import Literal
 
 # We are using a high precision ticks-per-quarter (= PPQ) resolution
 PPQ_RESOLUTION = 960
 
 
-def get_note_length(numerator=1, denominator=4):
+def get_note_length(numerator: int = 1, denominator: int = 4) -> int:
     return int(numerator / denominator * 4 * PPQ_RESOLUTION)
 
 
-def render_midi(midifile, basename, delete_wave=True):
+def render_midi(midifile: str, basename: str, delete_wave: bool = True) -> None:
     """
     Requires system packages: fluidsynth fluid-soundfont-gm lame
     http://wootangent.net/2010/11/converting-midi-to-wav-or-mp3-the-easy-way/
@@ -25,36 +25,45 @@ def render_midi(midifile, basename, delete_wave=True):
     midi.write_midifile(filename_mid, midifile)
 
     print("\n *** Rendering MIDI")
-    os.system("fluidsynth -F {} /usr/share/sounds/sf2/FluidR3_GM.sf2 {}".format(
-        filename_wav,
-        filename_mid,
-    ))
+    os.system(
+        "fluidsynth -F {} /usr/share/sounds/sf2/FluidR3_GM.sf2 {}".format(
+            filename_wav,
+            filename_mid,
+        )
+    )
 
     print("\n *** Converting to MP3")
-    os.system("lame --preset standard {} {}".format(
-        filename_wav,
-        filename_mp3,
-    ))
+    os.system(
+        "lame --preset standard {} {}".format(
+            filename_wav,
+            filename_mp3,
+        )
+    )
 
     if delete_wave:
         os.system("rm {}".format(filename_wav))
 
 
 class Note(object):
-    def __init__(self, tick_from, tick_upto, pitch, velocity=100):
+    def __init__(
+        self, tick_from: float, tick_upto: float, pitch: int, velocity: int = 100
+    ):
         self.tick_from = tick_from
         self.tick_upto = tick_upto
         self.pitch = pitch
         self.velocity = velocity
-        assert(tick_upto >= tick_from)
+        assert tick_upto >= tick_from
+
+
+Track = Literal["fg", "bg"]
 
 
 class MidiData(object):
-    def __init__(self):
-        self.data_fg = []
-        self.data_bg = []
+    def __init__(self) -> None:
+        self.data_fg: List[Note] = []
+        self.data_bg: List[Note] = []
 
-    def add_note(self, track, note):
+    def add_note(self, track: Track, note: Note) -> None:
         if track == "fg":
             self.data_fg.append(note)
         elif track == "bg":
@@ -62,7 +71,7 @@ class MidiData(object):
         else:
             raise ValueError("Unknown track ID.")
 
-    def extract_track_data(self):
+    def extract_track_data(self) -> List[Any]:
         output = []
         for track in [self.data_fg, self.data_bg]:
             track_converted = MidiData.convert_track(track)
@@ -70,11 +79,13 @@ class MidiData(object):
         return output
 
     @staticmethod
-    def convert_track(track):
+    def convert_track(track: List[Note]) -> List[Any]:
         # Create pairs of on/off events
         events_timestamped = []
         for note in track:
-            evt_on = midi.NoteOnEvent(tick=note.tick_from, pitch=note.pitch, velocity=note.velocity)
+            evt_on = midi.NoteOnEvent(
+                tick=note.tick_from, pitch=note.pitch, velocity=note.velocity
+            )
             evt_off = midi.NoteOffEvent(tick=note.tick_upto, pitch=note.pitch)
             events_timestamped.append((note.tick_from, evt_on))
             events_timestamped.append((note.tick_upto, evt_off))
@@ -83,7 +94,7 @@ class MidiData(object):
 
         # Convert to relative times
         events = []
-        pos = 0
+        pos = 0.0
         for timestamp, event in events_timestamped:
             delta = timestamp - pos
             event.tick = delta
@@ -96,7 +107,7 @@ class MidiData(object):
         return events
 
 
-def generate(track_data, bpm, basename):
+def generate(track_data: List[Any], bpm: float, basename: str) -> None:
     midifile = midi.Pattern(resolution=PPQ_RESOLUTION)
 
     # Add a tempo track
@@ -114,12 +125,17 @@ def generate(track_data, bpm, basename):
     render_midi(midifile, basename)
 
 
-def get_start_pitches(pattern, low=midi.A_3, high=midi.C_6):
+Pattern = List[int]
+
+
+def get_start_pitches(
+    pattern: Pattern, low: int = midi.A_3, high: int = midi.C_6
+) -> List[int]:
     max_delta = max(pattern)
     return list(range(low, high - max_delta + 1))
 
 
-def generator_major_triad(low=midi.A_3, high=midi.C_6):
+def generator_major_triad(low: int = midi.A_3, high: int = midi.C_6) -> MidiData:
     data = MidiData()
 
     note_length = get_note_length()
@@ -138,7 +154,7 @@ def generator_major_triad(low=midi.A_3, high=midi.C_6):
     return data
 
 
-def generator_major_scale(low=midi.A_3, high=midi.C_6):
+def generator_major_scale(low: int = midi.A_3, high: int = midi.C_6) -> MidiData:
     data = MidiData()
 
     note_length = get_note_length(1, 8)
@@ -157,7 +173,10 @@ def generator_major_scale(low=midi.A_3, high=midi.C_6):
     return data
 
 
-if __name__ == "__main__":
+def main() -> None:
     generate(generator_major_triad().extract_track_data(), 120, "major_triad")
     generate(generator_major_scale().extract_track_data(), 90, "major_scale")
 
+
+if __name__ == "__main__":
+    main()
