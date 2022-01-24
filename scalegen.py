@@ -104,9 +104,19 @@ class MidiData(object):
 Pattern = List[int]
 
 
-def get_start_pitches(pattern: Pattern, low: int, high: int) -> List[int]:
+def get_start_pitches(
+    pattern: Pattern, low: int, high: int, cycle_up_down: bool = True
+) -> List[int]:
+    min_delta = min(pattern)
     max_delta = max(pattern)
-    return list(range(low, high - max_delta + 1))
+
+    lowest = low - min_delta
+    highest = high - max_delta
+
+    if not cycle_up_down:
+        return list(range(lowest, highest + 1))
+    else:
+        return list(range(lowest, highest + 1)) + list(reversed(range(lowest, highest)))
 
 
 def generator_major_triad(
