@@ -1,1 +1,1 @@
-python-midi
+pretty_midi

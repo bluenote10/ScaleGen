@@ -3,18 +3,18 @@
 import os
 from typing import Any, List
 
-import midi
+import pretty_midi
 from typing_extensions import Literal
 
 # We are using a high precision ticks-per-quarter (= PPQ) resolution
 PPQ_RESOLUTION = 960
 
 
-def get_note_length(numerator: int = 1, denominator: int = 4) -> int:
-    return int(numerator / denominator * 4 * PPQ_RESOLUTION)
-
-
-def render_midi(midifile: str, basename: str, delete_wave: bool = True) -> None:
+def _render_midi(
+    midifile: pretty_midi.PrettyMIDI,
+    basename: str,
+    delete_wave: bool = True,
+) -> None:
     """
     Requires system packages: fluidsynth fluid-soundfont-gm lame
     http://wootangent.net/2010/11/converting-midi-to-wav-or-mp3-the-easy-way/
@@ -22,7 +22,7 @@ def render_midi(midifile: str, basename: str, delete_wave: bool = True) -> None:
     filename_mid = basename + ".mid"
     filename_wav = basename + ".wav"
     filename_mp3 = basename + ".mp3"
-    midi.write_midifile(filename_mid, midifile)
+    midifile.write(filename_mid)
 
     print("\n *** Rendering MIDI")
     os.system(
@@ -59,91 +59,69 @@ Track = Literal["fg", "bg"]
 
 
 class MidiData(object):
-    def __init__(self) -> None:
-        self.data_fg: List[Note] = []
-        self.data_bg: List[Note] = []
+    def __init__(self, bpm: float) -> None:
+        self.bpm = bpm
+        self.data_fg: pretty_midi.Instrument = pretty_midi.Instrument(
+            program=pretty_midi.instrument_name_to_program("Acoustic Grand Piano")
+        )
+        self.data_bg: pretty_midi.Instrument = pretty_midi.Instrument(
+            program=pretty_midi.instrument_name_to_program("Acoustic Grand Piano")
+        )
+
+    def _beat_to_abs_time(self, beat: float) -> float:
+        return beat * 60 / self.bpm
 
     def add_note(self, track: Track, note: Note) -> None:
+        # Note that pretty_midi always uses absolute time for notes and basically
+        # ignores the tempo setting of the file. Therefore we must to manually convert
+        # from "beat time" to absolute time.
+        pretty_note = pretty_midi.Note(
+            velocity=100,
+            pitch=note.pitch,
+            start=self._beat_to_abs_time(note.tick_from),
+            end=self._beat_to_abs_time(note.tick_upto),
+        )
         if track == "fg":
-            self.data_fg.append(note)
+            self.data_fg.notes.append(pretty_note)
         elif track == "bg":
-            self.data_bg.append(note)
+            self.data_bg.notes.append(pretty_note)
         else:
             raise ValueError("Unknown track ID.")
 
-    def extract_track_data(self) -> List[Any]:
-        output = []
-        for track in [self.data_fg, self.data_bg]:
-            track_converted = MidiData.convert_track(track)
-            output.append(track_converted)
-        return output
+    def convert_to_midi_file(self) -> pretty_midi.PrettyMIDI:
+        midi_file = pretty_midi.PrettyMIDI(
+            resolution=PPQ_RESOLUTION, initial_tempo=self.bpm
+        )
+        midi_file.instruments.append(self.data_fg)
+        midi_file.instruments.append(self.data_bg)
+        return midi_file
 
-    @staticmethod
-    def convert_track(track: List[Note]) -> List[Any]:
-        # Create pairs of on/off events
-        events_timestamped = []
-        for note in track:
-            evt_on = midi.NoteOnEvent(
-                tick=note.tick_from, pitch=note.pitch, velocity=note.velocity
-            )
-            evt_off = midi.NoteOffEvent(tick=note.tick_upto, pitch=note.pitch)
-            events_timestamped.append((note.tick_from, evt_on))
-            events_timestamped.append((note.tick_upto, evt_off))
-
-        events_timestamped = sorted(events_timestamped)
-
-        # Convert to relative times
-        events = []
-        pos = 0.0
-        for timestamp, event in events_timestamped:
-            delta = timestamp - pos
-            event.tick = delta
-            events.append(event)
-            pos += delta
-
-        # Add end-of-track
-        evt_eot = midi.EndOfTrackEvent(tick=0)
-        events.append(evt_eot)
-        return events
-
-
-def generate(track_data: List[Any], bpm: float, basename: str) -> None:
-    midifile = midi.Pattern(resolution=PPQ_RESOLUTION)
-
-    # Add a tempo track
-    track_tempo = midi.Track()
-    midifile.append(track_tempo)
-
-    evt_tempo = midi.SetTempoEvent(bpm=bpm)
-    track_tempo.append(evt_tempo)
-
-    # Add tracks from trackdata
-    for track in track_data:
-        midifile.append(track)
-
-    print(midifile)
-    render_midi(midifile, basename)
+    def write_midi_file(self, output_basename: str) -> None:
+        midi_file = self.convert_to_midi_file()
+        _render_midi(midi_file, output_basename)
 
 
 Pattern = List[int]
 
 
-def get_start_pitches(
-    pattern: Pattern, low: int = midi.A_3, high: int = midi.C_6
-) -> List[int]:
+def get_start_pitches(pattern: Pattern, low: int, high: int) -> List[int]:
     max_delta = max(pattern)
     return list(range(low, high - max_delta + 1))
 
 
-def generator_major_triad(low: int = midi.A_3, high: int = midi.C_6) -> MidiData:
-    data = MidiData()
+def generator_major_triad(
+    bpm: float = 120.0,
+    low: int = pretty_midi.note_name_to_number("A3"),
+    high: int = pretty_midi.note_name_to_number("C6"),
+) -> MidiData:
+    data = MidiData(bpm)
 
-    note_length = get_note_length()
+    note_length = 1.0
     pattern = [0, 4, 7, 12, 7, 4, 0]
 
     start_pitches = get_start_pitches(pattern, low, high)
 
-    pos = 0
+    pos = 0.0
     for start_pitch in start_pitches:
         data.add_note("bg", Note(pos, pos + note_length * 8, start_pitch - 12))
         for delta in pattern:
@@ -154,15 +132,19 @@ def generator_major_triad(low: int = midi.A_3, high: int = midi.C_6) -> MidiData
     return data
 
 
-def generator_major_scale(low: int = midi.A_3, high: int = midi.C_6) -> MidiData:
-    data = MidiData()
+def generator_major_scale(
+    bpm: float = 90.0,
+    low: int = pretty_midi.note_name_to_number("A3"),
+    high: int = pretty_midi.note_name_to_number("C6"),
+) -> MidiData:
+    data = MidiData(bpm)
 
-    note_length = get_note_length(1, 8)
+    note_length = 1.0
     pattern = [0, 2, 4, 5, 7, 9, 11, 12, 11, 9, 7, 5, 4, 2, 0]
 
     start_pitches = get_start_pitches(pattern, low, high)
 
-    pos = 0
+    pos = 0.0
     for start_pitch in start_pitches:
         data.add_note("bg", Note(pos, pos + note_length * 16, start_pitch - 12))
         for delta in pattern:
@@ -174,8 +156,8 @@ def generator_major_scale(low: int = midi.A_3, high: int = midi.C_6) -> MidiData
 
 
 def main() -> None:
-    generate(generator_major_triad().extract_track_data(), 120, "major_triad")
-    generate(generator_major_scale().extract_track_data(), 90, "major_scale")
+    generator_major_triad().write_midi_file("major_triad")
+    generator_major_scale().write_midi_file("major_scale")
 
 
 if __name__ == "__main__":
