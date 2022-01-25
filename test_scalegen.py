@@ -1,4 +1,4 @@
-from scalegen import get_start_pitches
+from scalegen import close_pattern, get_start_pitches
 
 
 def test_get_start_pitches() -> None:
@@ -19,3 +19,7 @@ def test_get_start_pitches__cycle_up_and_down() -> None:
     assert get_start_pitches([0, 1, 2], 20, 22) == [20]
     assert get_start_pitches([0, 1, 2], 20, 23) == [20, 21, 20]
     assert get_start_pitches([0, 1, 2], 20, 24) == [20, 21, 22, 21, 20]
+
+
+def test_close_pattern() -> None:
+    assert close_pattern([0, 1, 2]) == [0, 1, 2, 1, 0]

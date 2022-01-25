@@ -10,6 +10,37 @@ from typing_extensions import Literal
 PPQ_RESOLUTION = 960
 
 
+# -----------------------------------------------------------------------------
+# Pattern helpers
+# -----------------------------------------------------------------------------
+
+Pattern = List[int]
+
+
+def get_start_pitches(
+    pattern: Pattern, low: int, high: int, cycle_up_down: bool = True
+) -> List[int]:
+    min_delta = min(pattern)
+    max_delta = max(pattern)
+
+    lowest = low - min_delta
+    highest = high - max_delta
+
+    if not cycle_up_down:
+        return list(range(lowest, highest + 1))
+    else:
+        return list(range(lowest, highest + 1)) + list(reversed(range(lowest, highest)))
+
+
+def close_pattern(pattern: Pattern) -> Pattern:
+    return pattern + pattern[-2::-1]
+
+
+# -----------------------------------------------------------------------------
+# Midi generator wrapper
+# -----------------------------------------------------------------------------
+
+
 def _render_midi(
     midifile: pretty_midi.PrettyMIDI,
     basename: str,
@@ -55,10 +86,10 @@ class Note(object):
         assert tick_upto >= tick_from
 
 
-Track = Literal["fg", "bg"]
+TrackId = Literal["fg", "bg"]
 
 
-class MidiData(object):
+class Generator(object):
     def __init__(self, bpm: float) -> None:
         self.bpm = bpm
         self.data_fg: pretty_midi.Instrument = pretty_midi.Instrument(
@@ -71,7 +102,7 @@ class MidiData(object):
     def _beat_to_abs_time(self, beat: float) -> float:
         return beat * 60 / self.bpm
 
-    def add_note(self, track: Track, note: Note) -> None:
+    def add_note(self, track_id: TrackId, note: Note) -> None:
         # Note that pretty_midi always uses absolute time for notes and basically
         # ignores the tempo setting of the file. Therefore we must to manually convert
         # from "beat time" to absolute time.
@@ -81,9 +112,9 @@ class MidiData(object):
             start=self._beat_to_abs_time(note.tick_from),
             end=self._beat_to_abs_time(note.tick_upto),
         )
-        if track == "fg":
+        if track_id == "fg":
             self.data_fg.notes.append(pretty_note)
-        elif track == "bg":
+        elif track_id == "bg":
             self.data_bg.notes.append(pretty_note)
         else:
             raise ValueError("Unknown track ID.")
@@ -101,30 +132,17 @@ class MidiData(object):
         _render_midi(midi_file, output_basename)
 
 
-Pattern = List[int]
-
-
-def get_start_pitches(
-    pattern: Pattern, low: int, high: int, cycle_up_down: bool = True
-) -> List[int]:
-    min_delta = min(pattern)
-    max_delta = max(pattern)
-
-    lowest = low - min_delta
-    highest = high - max_delta
-
-    if not cycle_up_down:
-        return list(range(lowest, highest + 1))
-    else:
-        return list(range(lowest, highest + 1)) + list(reversed(range(lowest, highest)))
+# -----------------------------------------------------------------------------
+# Generators
+# -----------------------------------------------------------------------------
 
 
 def generator_major_triad(
     bpm: float = 120.0,
     low: int = pretty_midi.note_name_to_number("A3"),
     high: int = pretty_midi.note_name_to_number("C6"),
-) -> MidiData:
-    data = MidiData(bpm)
+) -> Generator:
+    data = Generator(bpm)
 
     note_length = 1.0
     pattern = [0, 4, 7, 12, 7, 4, 0]
@@ -146,8 +164,8 @@ def generator_major_scale(
     bpm: float = 90.0,
     low: int = pretty_midi.note_name_to_number("A3"),
     high: int = pretty_midi.note_name_to_number("C6"),
-) -> MidiData:
-    data = MidiData(bpm)
+) -> Generator:
+    data = Generator(bpm)
 
     note_length = 1.0
     pattern = [0, 2, 4, 5, 7, 9, 11, 12, 11, 9, 7, 5, 4, 2, 0]
@@ -165,9 +183,75 @@ def generator_major_scale(
     return data
 
 
+def generator_scale_with_triad_opener(
+    pattern: Pattern,
+    bpm: float = 140.0,
+    low: int = pretty_midi.note_name_to_number("E2"),
+    high: int = pretty_midi.note_name_to_number("G4"),
+    do_close_pattern: bool = True,
+) -> Generator:
+    if do_close_pattern:
+        pattern = close_pattern(pattern)
+
+    note_length = 1.0
+    time_per_loop = (
+        (len(pattern) + 3) * note_length * 60 / bpm
+    )  # 3 because start pitch + triad + break
+    print(
+        f"Time per loop: {time_per_loop:.1f} sec / Loops per minute: {60 / time_per_loop:.1f}"
+    )
+
+    start_pitches = get_start_pitches(pattern, low, high)
+    print(f"Total start pitches: {len(start_pitches)}")
+
+    data = Generator(bpm)
+    pos = 0.0
+    for start_pitch in start_pitches:
+        # 1. start pitch
+        data.add_note("fg", Note(pos, pos + note_length, start_pitch))
+        pos += note_length
+
+        # 2. the triad
+        data.add_note("fg", Note(pos, pos + note_length, start_pitch))
+        data.add_note("fg", Note(pos, pos + note_length, start_pitch + pattern[2]))
+        data.add_note("fg", Note(pos, pos + note_length, start_pitch + pattern[4]))
+        pos += note_length
+
+        for delta in pattern:
+            data.add_note("fg", Note(pos, pos + note_length, start_pitch + delta))
+            pos += note_length
+
+        # break in between loops
+        pos += note_length
+
+    return data
+
+
 def main() -> None:
-    generator_major_triad().write_midi_file("major_triad")
-    generator_major_scale().write_midi_file("major_scale")
+    # generator_major_triad().write_midi_file("major_triad")
+    # generator_major_scale().write_midi_file("major_scale")
+
+    generator_scale_with_triad_opener(
+        [0, 2, 4, 6, 7, 9, 11, 12],
+    ).write_midi_file("scale_plain_lydian")
+    generator_scale_with_triad_opener(
+        [0, 2, 4, 5, 7, 9, 11, 12],
+    ).write_midi_file("scale_plain_ionian")
+    generator_scale_with_triad_opener(
+        [0, 2, 4, 5, 7, 9, 10, 12],
+    ).write_midi_file("scale_plain_mixolydian")
+    generator_scale_with_triad_opener(
+        [0, 2, 3, 5, 7, 9, 10, 12],
+    ).write_midi_file("scale_plain_dorian")
+    generator_scale_with_triad_opener(
+        [0, 2, 3, 5, 7, 8, 10, 12],
+    ).write_midi_file("scale_plain_aeolian")
+    generator_scale_with_triad_opener(
+        [0, 1, 3, 5, 7, 8, 10, 12],
+    ).write_midi_file("scale_plain_phrygian")
+    generator_scale_with_triad_opener(
+        [0, 1, 3, 5, 6, 8, 10, 12],
+    ).write_midi_file("scale_plain_locrian")
 
 
 if __name__ == "__main__":
