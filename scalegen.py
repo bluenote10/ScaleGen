@@ -228,30 +228,75 @@ def generator_scale_with_triad_opener(
 
 
 def main() -> None:
-    # generator_major_triad().write_midi_file("major_triad")
-    # generator_major_scale().write_midi_file("major_scale")
+    generate_basics = False
+    if generate_basics:
+        generator_major_triad().write_midi_file("major_triad")
+        generator_major_scale().write_midi_file("major_scale")
 
-    generator_scale_with_triad_opener(
-        [0, 2, 4, 6, 7, 9, 11, 12],
-    ).write_midi_file("scale_plain_lydian")
-    generator_scale_with_triad_opener(
-        [0, 2, 4, 5, 7, 9, 11, 12],
-    ).write_midi_file("scale_plain_ionian")
-    generator_scale_with_triad_opener(
-        [0, 2, 4, 5, 7, 9, 10, 12],
-    ).write_midi_file("scale_plain_mixolydian")
-    generator_scale_with_triad_opener(
-        [0, 2, 3, 5, 7, 9, 10, 12],
-    ).write_midi_file("scale_plain_dorian")
-    generator_scale_with_triad_opener(
-        [0, 2, 3, 5, 7, 8, 10, 12],
-    ).write_midi_file("scale_plain_aeolian")
-    generator_scale_with_triad_opener(
-        [0, 1, 3, 5, 7, 8, 10, 12],
-    ).write_midi_file("scale_plain_phrygian")
-    generator_scale_with_triad_opener(
-        [0, 1, 3, 5, 6, 8, 10, 12],
-    ).write_midi_file("scale_plain_locrian")
+    generate_modes = False
+    if generate_modes:
+        generator_scale_with_triad_opener(
+            [0, 2, 4, 6, 7, 9, 11, 12],
+        ).write_midi_file("scale_plain_lydian")
+        generator_scale_with_triad_opener(
+            [0, 2, 4, 5, 7, 9, 11, 12],
+        ).write_midi_file("scale_plain_ionian")
+        generator_scale_with_triad_opener(
+            [0, 2, 4, 5, 7, 9, 10, 12],
+        ).write_midi_file("scale_plain_mixolydian")
+        generator_scale_with_triad_opener(
+            [0, 2, 3, 5, 7, 9, 10, 12],
+        ).write_midi_file("scale_plain_dorian")
+        generator_scale_with_triad_opener(
+            [0, 2, 3, 5, 7, 8, 10, 12],
+        ).write_midi_file("scale_plain_aeolian")
+        generator_scale_with_triad_opener(
+            [0, 1, 3, 5, 7, 8, 10, 12],
+        ).write_midi_file("scale_plain_phrygian")
+        generator_scale_with_triad_opener(
+            [0, 1, 3, 5, 6, 8, 10, 12],
+        ).write_midi_file("scale_plain_locrian")
+
+    generate_long_scale = False
+    if generate_long_scale:
+        long_scale_pattern = [0, 4, 7, 12, 16, 19, 17, 14, 11, 7, 5, 2, 0]
+        generator_scale_with_triad_opener(
+            long_scale_pattern,
+            bpm=160,
+            low=pretty_midi.note_name_to_number("Eb2"),
+            high=pretty_midi.note_name_to_number("A4"),
+            do_close_pattern=False,
+        ).write_midi_file("long_scale_middle")
+        generator_scale_with_triad_opener(
+            long_scale_pattern,
+            bpm=160,
+            low=pretty_midi.note_name_to_number("Eb2"),
+            high=pretty_midi.note_name_to_number("C#4"),
+            do_close_pattern=False,
+        ).write_midi_file("long_scale_low")
+        generator_scale_with_triad_opener(
+            long_scale_pattern,
+            bpm=160,
+            low=pretty_midi.note_name_to_number("B2"),
+            high=pretty_midi.note_name_to_number("A4"),
+            do_close_pattern=False,
+        ).write_midi_file("long_scale_high")
+
+    generate_chromatic = True
+    if generate_chromatic:
+        chromatic_pattern = list(range(8))
+        generator_scale_with_triad_opener(
+            chromatic_pattern,
+            bpm=160,
+            low=pretty_midi.note_name_to_number("Eb2"),
+            high=pretty_midi.note_name_to_number("F3"),
+        ).write_midi_file("chromatic_low")
+        generator_scale_with_triad_opener(
+            chromatic_pattern,
+            bpm=160,
+            low=pretty_midi.note_name_to_number("F3"),
+            high=pretty_midi.note_name_to_number("G4"),
+        ).write_midi_file("chromatic_high")
 
 
 if __name__ == "__main__":
